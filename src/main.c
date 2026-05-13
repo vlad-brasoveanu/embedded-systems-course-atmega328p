@@ -1,21 +1,22 @@
-#include "drivers/gpio/gpio.h"
-#include "drivers/timer/timer0.h"
-#include "bsp/nano.h"
+#include "gimbal.h"
+#include "gpio.h"
+#include "bsp.h"
+#include "nano.h"
 
-int main(void) {
-    
-    Timer0_Init();
+int main(void)
+{
+    /* NOTE: Timer0 ISR (system tick) is enabled inside Timer0_Init(), which
+     * is the first thing Gimbal_Init() calls. Interrupts (sei) are enabled
+     * there as well. LSM6DSO FIFO is polled – no external INT pin required. */
 
-    
-    GPIO_Init(LED_BUILTIN, GPIO_OUTPUT);
-
-    uint32_t last_time = 0;
+    /* Halt with LED on if any sensor fails WHO_AM_I or I2C handshake */
+    if (!Gimbal_Init()) {
+        GPIO_Init(LED_BUILTIN, GPIO_OUTPUT);
+        GPIO_Write(LED_BUILTIN, GPIO_HIGH);
+        while (1);  /* halt – check wiring */
+    }
 
     while (1) {
-            
-        if (Millis() - last_time >= 1000) {
-            last_time = Millis();
-            GPIO_Toggle(LED_BUILTIN);
-        }
+        Gimbal_Update();
     }
 }
