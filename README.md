@@ -46,31 +46,66 @@ At power-on the firmware reads the physical orientation of the sensor and captur
 ## Project Structure
 
 ```
-├── bsp/                    # Board pin definitions (nano.h, uno.h)
+├── bsp/
+│   ├── bsp.h               # Common BSP include
+│   ├── nano.h              # Arduino Nano pin definitions
+│   └── uno.h               # Arduino Uno pin definitions
+│
 ├── drivers/
-│   ├── adc/                # 10-bit ADC driver
-│   ├── eeprom/             # EEPROM read/write/update
-│   ├── gpio/               # GPIO init, read, write, toggle
-│   ├── i2c/                # I2C master driver (400 kHz, timeout-safe)
+│   ├── adc/
+│   │   ├── adc.c/h         # 10-bit ADC, blocking conversion
+│   ├── eeprom/
+│   │   ├── eeprom.c/h      # EEPROM read, write, update (lifespan-aware)
+│   ├── gpio/
+│   │   ├── gpio.c/h        # GPIO init, read, write, toggle
+│   ├── i2c/
+│   │   ├── i2c.c/h         # I2C master, 400 kHz, timeout protection,
+│   │   │                   # I2C_Scan(), I2C_IsDevicePresent()
 │   ├── imu/
-│   │   ├── lsm6dso.c/h     # Accel + gyro (208 Hz, ±2 g / ±250 dps)
-│   │   └── lis3mdl.c/h     # Magnetometer (80 Hz, ±4 gauss)
-│   ├── servo/              # SG90 PWM driver (Timer1 + Timer2)
-│   └── timer/              # Timer0 (Millis), Timer1, Timer2
+│   │   ├── lsm6dso.c/h     # ✅ ACTIVE — accel + gyro, 208 Hz (AltIMU-10 v6)
+│   │   ├── lis3mdl.c/h     # ✅ ACTIVE — magnetometer, 80 Hz (AltIMU-10 v6)
+│   │   ├── lps22df.c/h     # 🔧 AVAILABLE — barometer / altimeter (AltIMU-10 v6)
+│   │   └── lsm6ds33.c/h   # 🔧 AVAILABLE — accel + gyro (AltIMU-10 v5, legacy)
+│   ├── interrupt/
+│   │   ├── external_interrupt.c/h  # 🔧 AVAILABLE — INT0/INT1 with callbacks
+│   ├── pwm/
+│   │   ├── pwm.c/h         # 🔧 AVAILABLE — high-level PWM wrapper (Timer1/Timer2)
+│   ├── servo/
+│   │   ├── servo.c/h       # ✅ ACTIVE — SG90 driver, safe limits 10°–170°
+│   ├── timer/
+│   │   ├── timer0.c/h      # ✅ ACTIVE — 1 ms Millis() system tick (CTC mode)
+│   │   ├── timer1.c/h      # ✅ ACTIVE — 16-bit 50 Hz PWM (servo X/Y)
+│   │   └── timer2.c/h      # ✅ ACTIVE — 8-bit ~61 Hz PWM (servo Z)
+│   └── usart/
+│       ├── usart.c/h       # 🔧 AVAILABLE — UART driver (future serial telemetry)
+│
 ├── src/
-│   ├── main.c              # Entry point
-│   ├── gimbal.c            # Control loop: Madgwick + PID + servos
-│   └── gimbal.h            # Tuning parameters
+│   ├── main.c              # Entry point, fault LED on sensor failure
+│   ├── gimbal.c            # Full control loop: sensors → Madgwick → PID → servos
+│   └── gimbal.h            # All tuning parameters (Kp, Ki, Kd, beta, limits)
+│
 ├── utils/
-│   ├── madgwick.c/h        # Madgwick AHRS filter (6-DOF and 9-DOF)
-│   ├── pid.c/h             # PID controller with anti-windup
-│   ├── filter.c/h          # Complementary filter (available, not used)
-│   └── delay.c/h           # Busy-wait delay helpers
-├── test/                   # Host-side unit tests (GPIO, PWM)
-│   ├── mocks/              # Mock AVR registers for host testing
-│   └── test_*.c
+│   ├── madgwick.c/h        # ✅ ACTIVE — Madgwick AHRS (9-DOF with mag, 6-DOF fallback)
+│   ├── pid.c/h             # ✅ ACTIVE — PID controller with anti-windup
+│   ├── filter.c/h          # 🔧 AVAILABLE — complementary filter (simpler alternative)
+│   ├── delay.c/h           # Busy-wait delay helpers
+│   └── utils.h             # Bit-manipulation macros (SET_BIT, CLEAR_BIT, etc.)
+│
+├── test/
+│   ├── framework/
+│   │   └── test_framework.h        # Minimal host-side test runner
+│   ├── mocks/
+│   │   ├── avr/                    # Mock avr/io.h and avr/interrupt.h
+│   │   └── registers.c             # Simulated ATmega328P registers
+│   ├── test_gpio.c                 # GPIO unit tests
+│   ├── test_pwm.c                  # Timer PWM unit tests
+│   └── test_pwm_wrapper.c          # PWM wrapper unit tests
+│
 └── Makefile
 ```
+
+> **✅ ACTIVE** — compiled and used by the gimbal application.  
+> **🔧 AVAILABLE** — implemented and ready to use, not included in the current build.
 
 ---
 
