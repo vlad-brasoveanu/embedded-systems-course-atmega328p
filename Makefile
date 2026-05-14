@@ -24,7 +24,9 @@ BINDIR = bin
 
 # Compiler Flags
 CFLAGS = -mmcu=$(MCU) -DF_CPU=$(F_CPU) -Os -Wall -Wextra -std=gnu99
-CFLAGS += -I. -Idrivers/gpio -Idrivers/interrupt -Idrivers/timer -Idrivers/eeprom -Idrivers/adc -Ibsp -Iutils -Idrivers/usart
+CFLAGS += -I. -Idrivers/gpio -Idrivers/timer -Idrivers/eeprom -Idrivers/adc -Ibsp -Iutils
+CFLAGS += -Idrivers/i2c -Idrivers/imu -Idrivers/servo -Isrc
+LDFLAGS = -lm
 
 ifeq ($(BOARD), nano)
     CFLAGS += -DBOARD_NANO
@@ -35,7 +37,22 @@ else
 endif
 
 # Source Files
-SRC = src/main.c drivers/gpio/gpio.c drivers/interrupt/external_interrupt.c drivers/timer/timer0.c drivers/timer/timer1.c drivers/timer/timer2.c drivers/pwm/pwm.c drivers/eeprom/eeprom.c drivers/adc/adc.c utils/delay.c  drivers/usart/usart.c
+SRC = src/main.c \
+      src/gimbal.c \
+      drivers/gpio/gpio.c \
+      drivers/timer/timer0.c \
+      drivers/timer/timer1.c \
+      drivers/timer/timer2.c \
+      drivers/eeprom/eeprom.c \
+      drivers/adc/adc.c \
+      drivers/i2c/i2c.c \
+      drivers/imu/lsm6dso.c \
+      drivers/imu/lis3mdl.c \
+      drivers/servo/servo.c \
+      utils/delay.c \
+      utils/filter.c \
+      utils/pid.c \
+      utils/madgwick.c
 
 # Object Files
 # Replace .c extension with .o and prepend OBJDIR, keeping directory structure
@@ -51,15 +68,16 @@ directories:
 	@mkdir -p $(BINDIR)
 	@mkdir -p $(OBJDIR)/src
 	@mkdir -p $(OBJDIR)/drivers/gpio
-	@mkdir -p $(OBJDIR)/drivers/interrupt
 	@mkdir -p $(OBJDIR)/drivers/timer
 	@mkdir -p $(OBJDIR)/drivers/eeprom
 	@mkdir -p $(OBJDIR)/drivers/adc
-	@mkdir -p $(OBJDIR)/drivers/usart
+	@mkdir -p $(OBJDIR)/drivers/i2c
+	@mkdir -p $(OBJDIR)/drivers/imu
+	@mkdir -p $(OBJDIR)/drivers/servo
 	@mkdir -p $(OBJDIR)/utils
 
 $(TARGET).elf: $(OBJ)
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
 $(TARGET).hex: $(TARGET).elf
 	$(OBJCOPY) -O ihex -R .eeprom $< $@

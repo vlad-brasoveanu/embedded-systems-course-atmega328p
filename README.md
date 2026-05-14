@@ -1,132 +1,146 @@
-# Embedded Systems Course and Labs for students from Automation and Applied Informatics from Faculty of Automation, Computers and Electronics, University of Craiova
+# 3-Axis Gimbal Stabiliser — Arduino Nano / ATmega328P
 
-This repository is dedicated to the Embedded Systems course and labs for students from Automation and Applied Informatics from Faculty of Automation, Computers and Electronics, University of Craiova. 
+A bare-metal C firmware for a 3-axis gimbal stabiliser built on an **Arduino Nano (ATmega328P)** using a **Pololu AltIMU-10 v6** sensor board and three **SG90 servo motors**. No Arduino libraries — direct register manipulation only.
 
-If you are a student: please fork this repository and use it for your labs, homework and course. 
-
-Found a bug or you just want to contribute to this project ? Please raise an issue and/or send a pull request.
+> Built on top of the [Embedded Systems course repository](https://github.com/mamuleanu/embedded-systems-course-atmega328p) for the Automation and Applied Informatics programme, Faculty of Automation, Computers and Electronics, University of Craiova.
 
 [![Run Tests](https://github.com/mamuleanu/embedded-systems-course-atmega328p/actions/workflows/tests.yml/badge.svg)](https://github.com/mamuleanu/embedded-systems-course-atmega328p/actions/workflows/tests.yml)
 
+---
 
-## Features
+## What it does
 
-- **No Arduino Libraries**: Direct register manipulation for maximum control and efficiency.
-- **Drivers:**: Modular, documented, and reusable.
-    - **GPIO**: Initialization, Write, Read, Toggle.
-    - **Interrupts**: External Interrupts (INT0, INT1) with callback support.
-    - **Timer**: 1ms System Tick (`Millis()`) using Timer0 CTC mode.
-    - **EEPROM**: Read, Write, Update (lifespan-aware).
-    - **ADC**: Blocking 10-bit Analog-to-Digital conversion.
-    - **PWM**: High-level wrapper for Timer1 (16-bit) and Timer2 (8-bit) PWM generation.
-- **Board Support Package (BSP)**: Pin mappings for **Arduino Nano** and **Uno**.
-- **Robust Build System**: `Makefile` for compilation, flashing, and testing.
-- **Host-Based Unit Testing**: Run unit tests on your computer without hardware using register mocking.
-- **Code Coverage**: Generate HTML reports (`lcov`) to verify test coverage.
+At power-on the firmware reads the physical orientation of the sensor and captures it as the **home position**. From that point on, three independent PID controllers work continuously to hold that orientation — compensating for any tilt or rotation applied to the handle by driving the three servos.
 
-## Roadmap
+**Control loop (runs at ~208 Hz):**
+1. Read accel + gyro from LSM6DSO
+2. Read heading from LIS3MDL magnetometer
+3. Feed both into the Madgwick AHRS filter → clean pitch, roll, yaw angles
+4. Each PID computes how much to move its servo to cancel the measured error
+5. Drive the three servos to the corrected positions
 
-- [x] GPIO driver
-- [x] ADC driver
-- [x] EEPROM driver
-- [x] Interrupt driver
-- [x] Timer driver
-- [x] PWM driver
-- [ ] I2C driver
-- [ ] SPI driver
-- [ ] UART driver
-- [ ] Unit tests
+---
+
+## Hardware
+
+| Component | Part |
+|-----------|------|
+| Microcontroller | Arduino Nano (ATmega328P, 16 MHz) |
+| IMU sensor board | Pololu AltIMU-10 v6 (LSM6DSO + LIS3MDL + LPS22DF) |
+| Servos | 3× SG90 |
+
+### Wiring
+
+| Signal | Arduino Nano pin |
+|--------|-----------------|
+| I2C SDA | A4 |
+| I2C SCL | A5 |
+| Servo X (pitch) | D9 |
+| Servo Y (roll) | D10 |
+| Servo Z (yaw) | D3 |
+
+**Power:** servos must be powered directly from the supply (5 V / ≥ 2 A), **not** through the Arduino 5 V pin. Share a common GND between the supply, Arduino, and all servos. Add a 100 µF capacitor across the servo power rail to absorb current spikes.
+
+---
 
 ## Project Structure
 
 ```
-├── bsp/            # Board definitions (uno.h, nano.h)
-├── drivers/        # Hardware Abstraction Layer
-│   ├── adc/
-│   ├── eeprom/
-│   ├── gpio/
-│   ├── interrupt/
-│   └── timer/
-├── src/            # Application source code (main.c)
-├── test/           # Unit tests & Mocks
-│   ├── mocks/      # Mock AVR registers for host testing
-│   ├── framework/  # Minimal test runner
-│   └── test_*.c    # Unit test files
-├── utils/          # Helper macros (BIT manipulations)
-└── Makefile        # Build configuration
+├── bsp/                    # Board pin definitions (nano.h, uno.h)
+├── drivers/
+│   ├── adc/                # 10-bit ADC driver
+│   ├── eeprom/             # EEPROM read/write/update
+│   ├── gpio/               # GPIO init, read, write, toggle
+│   ├── i2c/                # I2C master driver (400 kHz, timeout-safe)
+│   ├── imu/
+│   │   ├── lsm6dso.c/h     # Accel + gyro (208 Hz, ±2 g / ±250 dps)
+│   │   └── lis3mdl.c/h     # Magnetometer (80 Hz, ±4 gauss)
+│   ├── servo/              # SG90 PWM driver (Timer1 + Timer2)
+│   └── timer/              # Timer0 (Millis), Timer1, Timer2
+├── src/
+│   ├── main.c              # Entry point
+│   ├── gimbal.c            # Control loop: Madgwick + PID + servos
+│   └── gimbal.h            # Tuning parameters
+├── utils/
+│   ├── madgwick.c/h        # Madgwick AHRS filter (6-DOF and 9-DOF)
+│   ├── pid.c/h             # PID controller with anti-windup
+│   ├── filter.c/h          # Complementary filter (available, not used)
+│   └── delay.c/h           # Busy-wait delay helpers
+├── test/                   # Host-side unit tests (GPIO, PWM)
+│   ├── mocks/              # Mock AVR registers for host testing
+│   └── test_*.c
+└── Makefile
 ```
+
+---
+
+## Features
+
+### Custom gimbal application
+- **Madgwick AHRS filter** — fuses accel, gyro, and magnetometer into drift-free pitch, roll, and yaw. Falls back to 6-DOF (accel + gyro only) when no new magnetometer data is available
+- **Home position capture** — at startup the firmware runs the filter for 1 second to converge, then captures the current orientation as the hold target. Whatever position the rig is in at power-on becomes the new "level"
+- **3 independent PID controllers** — one per axis with configurable Kp, Ki, Kd and output clamping. Yaw uses `Ki = 0` to prevent integral drift (yaw has no gravity reference, only the magnetometer)
+- **Safe servo limits** — all axes are hardware-clamped to 10°–170° to protect the SG90 motors from stalling at their mechanical endstops
+- **Servo axis mapping** — D9 (Timer1 OC1A) for X/pitch, D10 (Timer1 OC1B) for Y/roll, D3 (Timer2 OC2B) for Z/yaw
+
+### Drivers (bare-metal, no Arduino libraries)
+- **I2C master** — blocking, 400 kHz, with timeout protection on every bus wait, `I2C_IsDevicePresent()`, and `I2C_Scan()`
+- **LSM6DSO** — accel + gyro at 208 Hz, direct STATUS\_REG polling
+- **LIS3MDL** — magnetometer at 80 Hz, ±4 gauss, ultra-high-performance mode
+- **GPIO** — init, read, write, toggle
+- **Timers** — Timer0 (1 ms `Millis()` tick), Timer1 (16-bit 50 Hz PWM), Timer2 (8-bit ~61 Hz PWM)
+- **EEPROM** — read, write, update (lifespan-aware)
+- **ADC** — blocking 10-bit conversion
+
+---
 
 ## Build & Flash
 
 ### Prerequisites
 - `avr-gcc` toolchain
-- `avrdude`
+- `avrdude` (v7.3 recommended — v8.x has a known macOS/CH340 reset bug)
 - `make`
 
 ### Commands
+
 | Command | Description |
 |---------|-------------|
-| `make all BOARD=nano` | Compile the project for Arduino Nano. |
-| `make flash` | Flash the firmware to the connected board. |
-| `make clean` | Remove build artifacts. |
+| `make` | Compile for Arduino Nano (default) |
+| `make BOARD=uno` | Compile for Arduino Uno |
+| `make flash` | Flash firmware to the connected board |
+| `make clean` | Remove all build artifacts |
+
+---
+
+## Tuning
+
+All tuning parameters are in **`src/gimbal.h`**:
+
+| Parameter | Default | Effect |
+|-----------|---------|--------|
+| `GIMBAL_KP` | `2.0` | How hard the servos correct an error. Raise for faster response, lower if oscillating |
+| `GIMBAL_KI` | `0.01` | Corrects a persistent level offset. Set to `0` if the platform wobbles slowly |
+| `GIMBAL_KD` | `0.1` | Damps overshoot. Raise if the platform bounces around level |
+| `GIMBAL_MADGWICK_BETA` | `0.04` | Filter speed. Lower = smoother but slower to correct gyro drift |
+| `GIMBAL_WARMUP_MS` | `1000` | How long (ms) the filter runs before home is captured at startup |
+| `GIMBAL_MAX_DEG` | `90.0` | Maximum servo correction from centre (90° ± this value) |
+
+**Tuning order:** set `Ki = 0`, `Kd = 0`. Raise `Kp` until it oscillates, back off 20%. Add `Kd` to stop bouncing. Add a small `Ki` only if it settles a few degrees off level.
+
+---
 
 ## Testing & Coverage
 
-This project supports running unit tests on your host machine (Mac/Linux) by mocking the AVR hardware registers.
+Unit tests run on the host machine (Mac/Linux) by mocking AVR hardware registers — no hardware required.
 
-### Prerequisites (for coverage)
+### Prerequisites
 - `gcc`
-- `lcov` (`brew install lcov`)
+- `lcov` (`brew install lcov` on macOS)
 
-### Commands
 | Command | Description |
 |---------|-------------|
-| `make test` | Compile and run all unit tests (GPIO, PWM) on the host. |
-| `make coverage` | Run tests and generate usage metrics. |
-| `make coverage-html` | Generate a visual HTML report of code coverage. |
+| `make test` | Compile and run all unit tests |
+| `make coverage` | Run tests and generate coverage data |
+| `make coverage-html` | Generate a visual HTML coverage report |
 
 ![Code Coverage Example](/img/code_coverage_example.png)
-
-## Usage Example
-
-```c
-#include "drivers/gpio/gpio.h"
-#include "drivers/timer/timer0.h"
-#include "bsp/nano.h"
-
-int main(void) {
-    
-    Timer0_Init();
-    GPIO_Init(LED_BUILTIN, GPIO_OUTPUT);
-
-    uint32_t last_time = 0;
-
-    while (1) {
-            
-        if (Millis() - last_time >= 1000) {
-            last_time = Millis();
-            GPIO_Toggle(LED_BUILTIN);
-        }
-    }
-}
-
-// PWM Usage Example
-#include "drivers/pwm/pwm.h"
-#include "bsp/uno.h"
-
-int pwm_example(void) {
-    // 50Hz for Servo on D9
-    PWM_Init(UNO_D9, 50);
-    // 1.5ms pulse (approx neutral)
-    // Duty cycle calculation: (1.5ms / 20ms) * ICR1_TOP
-    // Wrapper takes 0-255: (1.5/20)*255 = ~19
-    PWM_SetDutyCycle(UNO_D9, 19);
-
-    // 1kHz LED Dimming on D11
-    PWM_Init(UNO_D11, 1000);
-    PWM_SetDutyCycle(UNO_D11, 128); // 50%
-    
-    return 0;
-}
-```
-
