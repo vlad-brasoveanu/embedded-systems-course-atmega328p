@@ -12,8 +12,6 @@
  * SG90 pulse range: 1000 µs (0°) … 2000 µs (180°), centre 1500 µs (90°).
  *
  * Note: Timer2 is 8-bit so Z-axis angular resolution is ~11°/step.
- * For better Z precision an external PWM driver (e.g. PCA9685) is
- * recommended in production.
  */
 
 typedef enum {
