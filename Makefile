@@ -24,7 +24,7 @@ BINDIR = bin
 
 # Compiler Flags
 CFLAGS = -mmcu=$(MCU) -DF_CPU=$(F_CPU) -Os -Wall -Wextra -std=gnu99
-CFLAGS += -I. -Idrivers/gpio -Idrivers/interrupt -Idrivers/timer -Idrivers/eeprom -Idrivers/adc -Ibsp -Iutils -Idrivers/usart
+CFLAGS += -I. -Idrivers/gpio -Idrivers/interrupt -Idrivers/timer -Idrivers/eeprom -Idrivers/adc -Ibsp -Iutils -Idrivers/usart -Idrivers/i2c
 
 ifeq ($(BOARD), nano)
     CFLAGS += -DBOARD_NANO
@@ -35,7 +35,7 @@ else
 endif
 
 # Source Files
-SRC = src/main.c drivers/gpio/gpio.c drivers/interrupt/external_interrupt.c drivers/timer/timer0.c drivers/timer/timer1.c drivers/timer/timer2.c drivers/pwm/pwm.c drivers/eeprom/eeprom.c drivers/adc/adc.c utils/delay.c  drivers/usart/usart.c
+SRC = src/main.c drivers/gpio/gpio.c drivers/interrupt/external_interrupt.c drivers/timer/timer0.c drivers/timer/timer1.c drivers/timer/timer2.c drivers/pwm/pwm.c drivers/eeprom/eeprom.c drivers/adc/adc.c utils/delay.c drivers/usart/usart.c drivers/i2c/i2c.c
 
 # Object Files
 # Replace .c extension with .o and prepend OBJDIR, keeping directory structure
@@ -56,6 +56,7 @@ directories:
 	@mkdir -p $(OBJDIR)/drivers/eeprom
 	@mkdir -p $(OBJDIR)/drivers/adc
 	@mkdir -p $(OBJDIR)/drivers/usart
+	@mkdir -p $(OBJDIR)/drivers/i2c
 	@mkdir -p $(OBJDIR)/utils
 
 $(TARGET).elf: $(OBJ)
@@ -78,20 +79,21 @@ clean:
 # Compiles test_gpio.c + registers.c
 test_gpio: directories
 	@mkdir -p $(BINDIR)/test
-	gcc -I. -Isrc -Idrivers/gpio -Idrivers/interrupt -Idrivers/timer -Idrivers/eeprom -Idrivers/adc -Ibsp -Iutils -Itest -Itest/mocks -DUNIT_TEST -o $(BINDIR)/test/test_gpio test/test_gpio.c test/mocks/registers.c
+	gcc -I. -Isrc -Idrivers/gpio -Idrivers/interrupt -Idrivers/timer -Idrivers/eeprom -Idrivers/adc -Idrivers/i2c -Ibsp -Iutils -Itest -Itest/mocks -DUNIT_TEST -o $(BINDIR)/test/test_gpio test/test_gpio.c test/mocks/registers.c
 	@echo "Running GPIO Tests..."
 	@./$(BINDIR)/test/test_gpio
 
 test_pwm: directories
 	@mkdir -p $(BINDIR)/test
-	gcc -I. -Isrc -Idrivers/gpio -Idrivers/interrupt -Idrivers/timer -Idrivers/eeprom -Idrivers/adc -Ibsp -Iutils -Itest -Itest/mocks -DUNIT_TEST -o $(BINDIR)/test/test_pwm test/test_pwm.c drivers/timer/timer1.c drivers/timer/timer2.c test/mocks/registers.c
+	gcc -I. -Isrc -Idrivers/gpio -Idrivers/interrupt -Idrivers/timer -Idrivers/eeprom -Idrivers/adc -Idrivers/i2c -Ibsp -Iutils -Itest -Itest/mocks -DUNIT_TEST -o $(BINDIR)/test/test_pwm test/test_pwm.c drivers/timer/timer1.c drivers/timer/timer2.c test/mocks/registers.c
 	@echo "Running PWM Tests..."
 	@./$(BINDIR)/test/test_pwm
 
 test_pwm_wrapper: directories
 	@mkdir -p $(BINDIR)/test
-	gcc -I. -Isrc -Idrivers/gpio -Idrivers/interrupt -Idrivers/timer -Idrivers/pwm -Idrivers/eeprom -Idrivers/adc -Ibsp -Iutils -Itest -Itest/mocks -DUNIT_TEST -o $(BINDIR)/test/test_pwm_wrapper test/test_pwm_wrapper.c drivers/timer/timer1.c drivers/timer/timer2.c drivers/pwm/pwm.c test/mocks/registers.c
-	# Run all tests
+	gcc -I. -Isrc -Idrivers/gpio -Idrivers/interrupt -Idrivers/timer -Idrivers/pwm -Idrivers/eeprom -Idrivers/adc -Idrivers/i2c -Ibsp -Iutils -Itest -Itest/mocks -DUNIT_TEST -o $(BINDIR)/test/test_pwm_wrapper test/test_pwm_wrapper.c drivers/timer/timer1.c drivers/timer/timer2.c drivers/pwm/pwm.c test/mocks/registers.c
+
+# Run all tests
 test: test_gpio test_pwm test_pwm_wrapper
 	@echo "All tests passed!"
 
@@ -100,7 +102,7 @@ coverage: directories
 	@mkdir -p $(BINDIR)/coverage
 	@echo "Compiling for Coverage..."
 	# Compile objects separately to ensure .gcno files are named correctly
-	gcc --coverage -O0 -c -I. -Isrc -Idrivers/gpio -Idrivers/interrupt -Idrivers/timer -Idrivers/eeprom -Idrivers/adc -Ibsp -Iutils -Itest -Itest/mocks -DUNIT_TEST -o $(BINDIR)/coverage/test_gpio.o test/test_gpio.c
+	gcc --coverage -O0 -c -I. -Isrc -Idrivers/gpio -Idrivers/interrupt -Idrivers/timer -Idrivers/eeprom -Idrivers/adc -Idrivers/i2c -Ibsp -Iutils -Itest -Itest/mocks -DUNIT_TEST -o $(BINDIR)/coverage/test_gpio.o test/test_gpio.c
 	gcc --coverage -O0 -c -I. -Isrc -Itest/mocks -DUNIT_TEST -o $(BINDIR)/coverage/registers.o test/mocks/registers.c
 	# Link
 	gcc --coverage -O0 -o $(BINDIR)/coverage/test_gpio_cov $(BINDIR)/coverage/test_gpio.o $(BINDIR)/coverage/registers.o
